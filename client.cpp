@@ -99,7 +99,6 @@ void server() {
     }
 }
 
-// In the client code, modify the main function:
 
 
 void print_hex(const char* data, size_t size) {
@@ -160,7 +159,6 @@ int main(int argc, char *argv[]) {
         }
         args.push_back(key);
     } else if (strcmp(command, "keys") == 0) {
-        // "keys" command doesn't need additional arguments
     } else {
         std::cerr << "Invalid command" << std::endl;
         close(sock);
