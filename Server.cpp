@@ -101,7 +101,7 @@ static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::strin
     return 0;
 }
 
-// Handle query// In the server code, modify the handle_query function:
+// Handle query
 
 static int32_t handle_query(const std::vector<std::string> &cmd, std::string &res) {
     if (cmd.empty()) {
