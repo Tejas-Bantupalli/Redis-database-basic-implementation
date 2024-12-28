@@ -52,6 +52,13 @@ struct HTab {
     size_t size = 0;
 };
 
+// The real hashtable interface
+struct HMap {
+    HTab ht1; // newer
+    HTab ht2; // older
+    size_t resizing_pos = 0;
+};
+
 // Hashtable insertion
 static void h_insert(HTab *htab, HNode *node) {
     size_t pos = node->hcode & htab->mask; // slot index
@@ -78,6 +85,7 @@ static void h_free(HTab *htab) {
     htab->size = 0;
 }
 
+HMap hmap;
 
 
 // Parse request
@@ -205,12 +213,7 @@ static HNode *h_detach(HTab *htab, HNode **from) {
     return node;
 }
 
-// The real hashtable interface
-struct HMap {
-    HTab ht1; // newer
-    HTab ht2; // older
-    size_t resizing_pos = 0;
-};
+
 
 // Lookup in hashtable
 static HNode **h_lookup(HTab *htab, HNode *key, bool (*eq)(HNode *, HNode *)) {
