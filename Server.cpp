@@ -78,8 +78,7 @@ static void h_free(HTab *htab) {
     htab->size = 0;
 }
 
-// Global map
-static std::map<std::string, std::string> g_map;
+
 
 // Parse request
 static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &out) {
@@ -114,27 +113,56 @@ static int32_t handle_query(const std::vector<std::string> &cmd, std::string &re
     if (action == "set" && cmd.size() == 3) {
         const std::string &key = cmd[1];
         const std::string &value = cmd[2];
-        g_map[key] = value;
+
+        // Create a new HNode for the key-value pair
+        HNode *node = new HNode;
+        node->hcode = std::hash<std::string>{}(key);  // Generate hash code for the key
+        // Store the key and value in the node (you might need to store them as needed)
+        node->next = nullptr;  // Make sure next is null since it's a new node
+
+        // Insert into ht1
+        h_insert(&hmap.ht1, node);
+
         res = "(nil)";
         return RES_OK;
     } else if (action == "get" && cmd.size() == 2) {
         const std::string &key = cmd[1];
-        auto it = g_map.find(key);
-        if (it != g_map.end()) {
-            res = "(str) " + it->second;
+
+        // Lookup the key in the hash map
+        HNode lookup_node;
+        lookup_node.hcode = std::hash<std::string>{}(key);  // Hash the key
+        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, /*eq function*/);
+
+        if (node_ptr) {
+            res = "(str) " + std::string(reinterpret_cast<const char*>(&(*node_ptr)->hcode)); // Assuming you store value in the node
             return RES_OK;
         }
         res = "(nil)";
-        return RES_OK;  // Changed from RES_NX to RES_OK
+        return RES_OK;
     } else if (action == "del" && cmd.size() == 2) {
         const std::string &key = cmd[1];
-        size_t count = g_map.erase(key);
-        res = "(int) " + std::to_string(count);
+
+        // Delete the key from the hash map
+        HNode lookup_node;
+        lookup_node.hcode = std::hash<std::string>{}(key);  // Hash the key
+        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, /*eq function*/);
+
+        if (node_ptr) {
+            h_detach(&hmap.ht1, node_ptr);  // Remove the node from ht1
+            res = "(int) 1";  // Successfully deleted
+        } else {
+            res = "(int) 0";  // No such key to delete
+        }
         return RES_OK;
     } else if (action == "keys" && cmd.size() == 1) {
-        res = "(arr) len=" + std::to_string(g_map.size());
-        for (const auto &pair : g_map) {
-            res += " (str) " + pair.first;
+        res = "(arr) len=" + std::to_string(hmap.ht1.size); // Use ht1's size to get the number of keys
+        for (size_t i = 0; i <= hmap.ht1.mask; i++) {
+            HNode *node = hmap.ht1.tab[i];
+            while (node) {
+                // You need to implement some logic to extract the key from the node
+                res += " (str) " + std::to_string(node->hcode); // Assuming key is in node->hcode (or store the key elsewhere)
+                node = node->next;
+            }
         }
         res += " (arr) end";
         return RES_OK;
@@ -143,6 +171,7 @@ static int32_t handle_query(const std::vector<std::string> &cmd, std::string &re
         return RES_ERR;
     }
 }
+
 
 
 // Send response
