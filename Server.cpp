@@ -87,7 +87,6 @@ static void h_free(HTab *htab) {
 
 HMap hmap;
 
-
 // Parse request
 static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &out) {
     if (len < 8) return -1;
@@ -109,7 +108,6 @@ static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::strin
 }
 
 // Handle query
-
 static int32_t handle_query(const std::vector<std::string> &cmd, std::string &res) {
     if (cmd.empty()) {
         res = "(err) 1 No command received";
@@ -139,7 +137,7 @@ static int32_t handle_query(const std::vector<std::string> &cmd, std::string &re
         // Lookup the key in the hash map
         HNode lookup_node;
         lookup_node.hcode = std::hash<std::string>{}(key);  // Hash the key
-        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, /*eq function*/);
+        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, [](HNode *a, HNode *b) { return true; });
 
         if (node_ptr) {
             res = "(str) " + std::string(reinterpret_cast<const char*>(&(*node_ptr)->hcode)); // Assuming you store value in the node
@@ -153,7 +151,7 @@ static int32_t handle_query(const std::vector<std::string> &cmd, std::string &re
         // Delete the key from the hash map
         HNode lookup_node;
         lookup_node.hcode = std::hash<std::string>{}(key);  // Hash the key
-        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, /*eq function*/);
+        HNode **node_ptr = h_lookup(&hmap.ht1, &lookup_node, [](HNode *a, HNode *b) { return true; });
 
         if (node_ptr) {
             h_detach(&hmap.ht1, node_ptr);  // Remove the node from ht1
@@ -180,12 +178,7 @@ static int32_t handle_query(const std::vector<std::string> &cmd, std::string &re
     }
 }
 
-
-
 // Send response
-
-
-
 static int32_t send_res(int fd, const std::string &res) {
     ssize_t total_sent = 0;
     ssize_t len = res.length();
@@ -203,8 +196,6 @@ static int32_t send_res(int fd, const std::string &res) {
     return total_sent;
 }
 
-
-
 // Remove a node from the chain
 static HNode *h_detach(HTab *htab, HNode **from) {
     HNode *node = *from;
@@ -212,8 +203,6 @@ static HNode *h_detach(HTab *htab, HNode **from) {
     htab->size--;
     return node;
 }
-
-
 
 // Lookup in hashtable
 static HNode **h_lookup(HTab *htab, HNode *key, bool (*eq)(HNode *, HNode *)) {
@@ -252,133 +241,64 @@ static void hm_help_resizing(HMap *hmap) {
 
 // Initialize map
 static void hm_start_resizing(HMap *hmap) {
-    assert(hmap->ht2.tab == nullptr);
-    size_t n = hmap->ht1.mask + 1;
-    h_init(&hmap->ht2, n * 2);
-    std::cerr << "Resizing started" << std::endl;
+    h_init(&hmap->ht2, hmap->ht1.size * 2);
 }
 
-// Cleanup map
-static void hm_cleanup(HMap *hmap) {
-    h_free(&hmap->ht1);
-    h_free(&hmap->ht2);
+// Reset
+void reset() {
+    if (hmap.ht1.tab) h_free(&hmap.ht1);
+    if (hmap.ht2.tab) h_free(&hmap.ht2);
+    h_init(&hmap.ht1, 32);
+    hmap.ht2.tab = nullptr;
 }
 
-// Signal handler
-static void signal_handler(int signal) {
-    if (signal == SIGINT || signal == SIGTERM) {
-        keep_running = 0;
-    }
+// Signal handler for SIGINT
+void signal_handler(int sig) {
+    keep_running = 0;
+    reset();
 }
 
+int main(int argc, char *argv[]) {
+    signal(SIGINT, signal_handler);  // Setup signal handler for cleanup
 
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
 
-
-int main() {
-    // Signal handling setup
-    struct sigaction sa;
-    sa.sa_handler = signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
-
-    // Server setup
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    sockaddr_in server_addr = {};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
-
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(server_fd, 5) < 0) {
-        perror("listen");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    std::cerr << "Server started on port " << PORT << std::endl;
-
-    std::vector<pollfd> poll_fds;
-    poll_fds.push_back({server_fd, POLLIN, 0});
-
-    HMap hmap;
-    h_init(&hmap.ht1, 16);
-
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    assert(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+    assert(listen(fd, 10) == 0);
+    
     while (keep_running) {
-        int poll_count = poll(poll_fds.data(), poll_fds.size(), 5000);
-        if (poll_count < 0) {
+        struct pollfd fds[1] = {{fd, POLLIN, 0}};
+        int ret = poll(fds, 1, 500);
+        if (ret == -1) {
             if (errno == EINTR) continue;
             perror("poll");
             break;
         }
-
-        for (size_t i = 0; i < poll_fds.size(); i++) {
-            if (poll_fds[i].revents & POLLIN) {
-                if (poll_fds[i].fd == server_fd) {
-                    // Accept new connections
-                    sockaddr_in client_addr;
-                    socklen_t client_addr_len = sizeof(client_addr);
-                    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
-                    if (client_fd < 0) {
-                        perror("accept");
-                        continue;
-                    }
-                    fcntl(client_fd, F_SETFL, O_NONBLOCK);
-                    poll_fds.push_back({client_fd, POLLIN, 0});
-                } else {
-                    // Handle client requests
-                    int client_fd = poll_fds[i].fd;
-                    uint8_t buffer[MAX_MSG_SIZE];
-                    ssize_t read_size = read(client_fd, buffer, sizeof(buffer));
-                    if (read_size < 0) {
-                        if (errno == EINTR) continue;
-                        perror("read");
-                        close(client_fd);
-                        continue;
-                    }
-                    if (read_size == 0) {
-                        close(client_fd);
-                        continue;
-                    }
-
-                    std::vector<std::string> cmd;
-                    std::string response;
-                    if (parse_req(buffer, read_size, cmd) == 0) {
-                        handle_query(cmd, response);
-                        send_res(client_fd, response);
-                    } else {
-                        send_res(client_fd, "(err) 1 Invalid request");
+        if (fds[0].revents & POLLIN) {
+            int client_fd = accept(fd, nullptr, nullptr);
+            assert(client_fd >= 0);
+            std::string res;
+            while (keep_running) {
+                uint8_t buf[k_max_msg];
+                ssize_t len = recv(client_fd, buf, sizeof(buf), 0);
+                if (len <= 0) break;
+                
+                std::vector<std::string> cmd;
+                if (parse_req(buf, len, cmd) == 0) {
+                    if (handle_query(cmd, res) == RES_OK) {
+                        send_res(client_fd, res);
                     }
                 }
             }
-        }
-
-        // Handle resizing if needed
-        if (hmap.ht2.tab) {
-            hm_help_resizing(&hmap);
+            close(client_fd);
         }
     }
 
-    std::cerr << "Server shutting down" << std::endl;
-    hm_cleanup(&hmap);
-    close(server_fd);
+    close(fd);
     return 0;
 }
