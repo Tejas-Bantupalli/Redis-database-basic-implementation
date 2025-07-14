@@ -76,10 +76,25 @@ bool one_request(Conn *conn) {
     if (4 + len > conn->rbuf_size) {
         return false;
     }
+    uint32_t rescode = 0;
+    uint32_t wlen = 0;
+    int32_t err = do_request(&conn->rbuf[4], len, &rescode, &conn->wbuf[4], &wlen);
+    if (err != RES_OK) {
+        printf("error in request processing");
+        conn->state = STATE_END; // Mark the connection for deletion
+        return false; // Indicate an error
+    }
+    // Write response length (wlen + 4 for rescode) at the start
+    uint32_t total_len = wlen + 4;
+    memcpy(&conn->wbuf[0], &total_len, 4);
+    // Write response code
+    memcpy(&conn->wbuf[4], &rescode, 4);
+    // Write response data (if any)
+    if (wlen > 0) {
+        memcpy(&conn->wbuf[8], &conn->wbuf[4], wlen);
+    }
+    conn->wbuf_size = 4 + 4 + wlen; // 4 for length, 4 for rescode, wlen for data
     printf("client says: %.*s\n", len, &conn->rbuf[4]);
-    memcpy(&conn->wbuf[0], &len, 4);
-    memcpy(&conn->wbuf[4], &conn->rbuf[4], len);
-    conn->wbuf_size = 4 + len;
     size_t remain = conn->rbuf_size - 4 - len;
     if (remain) {
         memmove(conn->rbuf, &conn->rbuf[4 + len], remain);
@@ -133,3 +148,4 @@ void connection_io(Conn *conn){
         assert(0);
     }
 }
+

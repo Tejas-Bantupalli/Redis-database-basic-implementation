@@ -10,15 +10,27 @@
 #include <cassert>       // for assert
 #include "common.h"
 
-static int32_t send_req(int fd, const char* text) {
-    uint32_t len = (uint32_t)strlen(text);
-    if (len > k_max_msg) {
-        return -1;
+static int32_t send_req(int fd, const std::vector<std::string> &cmd) {
+    uint32_t len = 4;
+    for (const std::string &arg : cmd) {
+        len += 4 + (uint32_t)arg.size();
+        if (len > k_max_msg) {
+            return -1;
+        }
     }
     char wbuf[4 + k_max_msg];
-    memcpy(wbuf, &len, 4);
-    memcpy(&wbuf[4], text, len);
-    return write_all(fd, wbuf, 4 + len);
+    memcpy(wbuf, &len, 4); // total length
+    uint32_t n = cmd.size();
+    memcpy(&wbuf[4], &n, 4); // number of arguments
+    size_t cur = 8;
+    for (const std::string &arg : cmd) {
+        uint32_t arglen = (uint32_t)arg.size();
+        memcpy(&wbuf[cur], &arglen, 4);
+        memcpy(&wbuf[cur + 4], arg.data(), arglen);
+        cur += 4 + arglen;
+    }
+    int32_t err = write_all(fd, wbuf, 4 + len);
+    return err;
 }
 
 static int32_t read_resp(int fd) {
@@ -36,9 +48,14 @@ static int32_t read_resp(int fd) {
     if (err == -1) {
         return -1; // Indicate an error
     }
-    rbuf[4 + len] = '\0'; // Null-terminate the string
-    printf("Server response: %.*s\n", len, &rbuf[4]);
-    return 0; // Indicate success
+    uint32_t rescode = 0;
+    if (len < 4) {
+        printf("bad response");
+        return -1;
+    }
+    memcpy(&rescode, &rbuf[4], 4);
+    printf("server says: [%u] %.*s\n", rescode, len - 4, &rbuf[8]);
+    return 0;
 }
 
 
@@ -58,12 +75,7 @@ static int32_t query(int fd, const char *text){
     return read_resp(fd); // Read the response
 }
 
-
-
-
-
-
-int main() {
+int main(int argc, char **argv) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         die("socket()");
@@ -79,21 +91,19 @@ int main() {
         die("connect()");
     }
 
-    const char* query_list[3] = {"hello1", "hello2", "hello3"};
-    for (size_t i = 0; i < 3; ++i) {
-        int32_t err = send_req(fd, query_list[i]);
-        if (err) {
-            goto L_DONE;
-        }
+    std::vector<std::string> cmd;
+    for (int i = 1; i < argc; ++i) {
+        cmd.push_back(argv[i]);
     }
-    for (size_t i = 0; i < 3; ++i) {
-        int32_t err = read_resp(fd);
-        if (err) {
-            goto L_DONE;
-        }
+    int32_t err = send_req(fd, cmd);
+    if (err) {
+        goto L_DONE;
     }
-L_DONE:
+    err = read_resp(fd);
+    if (err) {
+        goto L_DONE;
+    }
+    L_DONE:
     close(fd);
     return 0;
-
 }
