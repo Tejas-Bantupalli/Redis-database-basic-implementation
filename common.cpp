@@ -6,8 +6,6 @@
 #include <cerrno>
 #include <cassert>
 
-const size_t k_max_msg = 4096;
-
 void die(const char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);

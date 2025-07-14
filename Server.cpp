@@ -10,37 +10,36 @@
 #include <arpa/inet.h>   // for inet_ntop (if needed)
 #include <sys/types.h>  // for ssize_t
 #include "common.h"
-void msg(const char* s) {
-    perror(s);
-}
+#include <vector>
+#include <poll.h>        // for poll
+#include <fcntl.h>       // for fcntl, O_NONBLOCK
+#include <sys/select.h>
+#include "utils.h"
 
-static int32_t one_request(int connfd) {
-    char rbuf[4+ k_max_msg];
-    int32_t err = read_full(connfd, rbuf, 4);
-    if (err==-1) {
-        msg("stuff");
-        return err; // Indicate an error
+static int32_t accept_new_connection(int fd, std::vector<Conn *> &f2dconn) {
+    struct sockaddr_in addr = {};
+    socklen_t addr_len = sizeof(addr);
+    int new_fd = accept(fd, (struct sockaddr *)&addr, &addr_len);
+    if (new_fd < 0) {
+        perror("accept()");
+        return -1;
     }
-    uint32_t len =0;
-    memcpy(&len, rbuf, 4);
-    if (len > k_max_msg) {
-        msg("message too long");
-        return -1; // Indicate an error
+    Conn *conn = (Conn *)malloc(sizeof(Conn));
+    if (!conn) {
+        perror("malloc()");
+        close(new_fd);
+        return -1;
     }
-    err = read_full(connfd, &rbuf[4], len);
-    if (err){
-        msg("read_full() error");
-        return err;
+    conn->fd = new_fd;
+    conn->state = STATE_REQ;
+    conn->rbuf_size = 0;
+    conn->wbuf_size = 0;
+    conn->wbuf_sent = 0;
+    if (f2dconn.size() <= (size_t)new_fd) {
+        f2dconn.resize(new_fd + 1, nullptr); // Resize to accommodate new_fd
     }
-    rbuf[4 + len] = '\0'; // Null-terminate the string for printingprin
-    printf("client says: %s\n", &rbuf[4]);
-    const char reply[] = "world";
-    char wbuf[4 + sizeof(reply)];
-    len = (uint32_t)strlen(reply);
-    memcpy(wbuf, &len, 4);
-    memcpy(&wbuf[4], reply, len);
-    return write_all(connfd, wbuf, 4 + len); // Return the result of write_all
-
+    f2dconn[new_fd] = conn;
+    return 0;
 }
 
 int main() {
@@ -66,24 +65,46 @@ int main() {
     if (rv) {
         die("listen()");
     }
-
+    std::vector<Conn *> f2dconn;
+    fd_set_nb(fd); // Set the socket to non-blocking mode
+    std::vector<struct pollfd> poll_args;
     while (true) {
-        struct sockaddr_in client_addr = {};
-        socklen_t addrlen = sizeof(client_addr);
-        int connfd = accept(fd, (struct sockaddr *)&client_addr, &addrlen);
-        if (connfd < 0) {
-            msg("accept() failed");
-            continue;
+        poll_args.clear();
+        struct pollfd pfd = {fd,POLLIN,0};
+        poll_args.push_back(pfd);
+        for (Conn *conn : f2dconn) {
+            if (!conn) continue; // Skip null pointers
+            struct pollfd pfd = {};
+            pfd.fd = conn->fd;
+            pfd.events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
+            pfd.events = pfd.events | POLLERR;
+            poll_args.push_back(pfd);
         }
-        while (true){
-            int32_t err = one_request(connfd);
-            if (err < 0) {
-                break; 
+        int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
+        if (rv < 0) {
+            die("poll()");
+        }
+        for (size_t i =0;i< poll_args.size();i++){
+            if (poll_args[i].revents){
+                int fd = poll_args[i].fd;
+                if (fd < 0 || fd >= (int)f2dconn.size()) continue; // skip invalid fds
+                Conn *conn = f2dconn[fd];
+                if (!conn) continue; // skip if no connection
+                connection_io(conn);
+                if (conn->state == STATE_END) {
+                    f2dconn[conn->fd] = nullptr; // Mark for deletion
+                    (void)close(conn->fd); // Close the socket
+                    free(conn); // Free the memory
+                }
             }
         }
-        close(connfd);
-    }
+        if (poll_args[0].revents) {
+            (void)accept_new_connection(fd, f2dconn);
+        }
+        
 
-    close(fd);
+    }
     return 0;
 }
+
+
