@@ -7,7 +7,6 @@
 #include <netinet/in.h>
 #include <csignal>
 #include <cassert>
-#include <cstdint>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <map>
@@ -16,6 +15,7 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include "hashtable.h"
 #define k_max_args 4
 const size_t k_max_msg = 4096; // Maximum message size
 int32_t read_full(int fd, char* buf, size_t len);
@@ -42,9 +42,25 @@ struct Conn {
     size_t wbuf_sent = 0;
     uint8_t wbuf[4 + k_max_msg];
 };
-static std::map<std::string, std::string> g_map;
+static struct {
+    HMap db;
+} g_data;
 int32_t do_request(const uint8_t *data, uint32_t len, uint32_t *rescode, uint8_t *res, uint32_t *reslen);
 uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen);
 uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen);
 uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen);
 int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &cmd);
+struct Entry {
+    struct HNode node;
+    std::string key;
+    std::string val;
+};
+// Portable C++ version of container_of macro
+#include <cstddef>
+#define container_of(ptr, type, member) \
+    ((type *)((char *)(ptr)-offsetof(type, member)))
+
+// entry_eq macro removed; use the function version in common.cpp
+bool entry_eq(HNode *lhs, HNode *rhs);
+    
+    

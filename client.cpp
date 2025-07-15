@@ -54,7 +54,12 @@ static int32_t read_resp(int fd) {
         return -1;
     }
     memcpy(&rescode, &rbuf[4], 4);
-    printf("server says: [%u] %.*s\n", rescode, len - 4, &rbuf[8]);
+    // Print value for set and get
+    if (rescode == 0 && len > 4) {
+        printf("server says: [%u] %.*s\n", rescode, len - 4, &rbuf[8]);
+    } else {
+        printf("server says: [%u]\n", rescode);
+    }
     return 0;
 }
 

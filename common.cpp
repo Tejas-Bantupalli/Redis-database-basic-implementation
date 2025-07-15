@@ -5,7 +5,8 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cassert>
-
+#include "hashtable.h"
+#include "utils.h"
 void die(const char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);
@@ -52,11 +53,22 @@ int32_t do_request(const uint8_t *data, uint32_t len, uint32_t *rescode, uint8_t
     }
     return RES_ERR; // Default case for error handling
 }
+
+bool entry_eq(HNode *lhs, HNode *rhs) {
+    struct Entry *le = container_of(lhs, struct Entry, node);
+    struct Entry *re = container_of(rhs, struct Entry, node);
+    return le->key == re->key;
+}
+
 uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
-    if (!g_map.count(cmd[1])) {
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (!node){
         return RES_NX;
     }
-    std::string &value = g_map[cmd[1]];
+    const std::string &value =  container_of(node,Entry,node)->val;
     assert(value.size() <= k_max_msg);
     memcpy(res, value.data(), value.size());
     *reslen = (uint32_t)value.size();
@@ -64,16 +76,35 @@ uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *res
 }
 
 uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
-    (void)res; // Unused
-    (void)reslen; // Unused
-    g_map[cmd[1]] = cmd[2];
+    Entry* entry = new Entry;
+    entry->key = cmd[1];
+    entry->val = cmd[2];
+    entry->node.hcode = str_hash((const uint8_t*)entry->key.data(), entry->key.size());
+    printf("[DEBUG] Allocating Entry at %p for key '%s'\n", (void*)entry, entry->key.c_str());
+    hm_insert(&g_data.db, &entry->node);
+    // Echo the value back in the response
+    size_t vlen = entry->val.size();
+    if (vlen > k_max_msg) vlen = k_max_msg;
+    memcpy(res, entry->val.data(), vlen);
+    *reslen = (uint32_t)vlen;
     return RES_OK;
 }
 
 uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
-    (void)res; // Unused
-    (void)reslen; // Unused
-    g_map.erase(cmd[1]);
+    (void)res;
+    (void)reslen;
+    // Create a temporary key for lookup only; do not insert stack-allocated Entry into the hash table
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((const uint8_t*)key.key.data(), key.key.size());
+    HNode* node = hm_delete(&g_data.db, &key.node);
+    if (node) {
+        // Only delete if node points to a heap-allocated Entry (which should always be the case)
+        Entry* entry = container_of(node, Entry, node);
+        printf("[DEBUG] Deleting Entry at %p for key '%s'\n", (void*)entry, entry->key.c_str());
+        delete entry;
+        node = nullptr; // Extra safety: avoid dangling pointer
+    }
     return RES_OK;
 }
 

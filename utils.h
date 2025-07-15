@@ -1,14 +1,5 @@
-#include <cstdio>        // for printf, perror
-#include <cstdlib>       // for exit
-#include <cstring>       // for memset, strlen
-#include <unistd.h>      // for read, write, close
-#include <sys/socket.h>  // for socket, setsockopt, bind, listen, accept
-#include <netinet/in.h>  // for sockaddr_in, htons, htonl
-#include <csignal>       // for signal (optional cleanup handling)
-#include <cassert>       // for assert
-#include <cstdint>       // for uint32_t
-#include <arpa/inet.h>   // for inet_ntop (if needed)
-#include <sys/types.h>  // for ssize_t
+#pragma once
+struct Conn;
 #include "common.h"
 #include <vector>
 #include <poll.h>        // for poll
@@ -21,3 +12,4 @@ void stateres(Conn *conn);
 bool one_request(Conn *conn);
 bool try_fill_buffer(Conn *conn);
 void connection_io(Conn *conn);
+uint64_t str_hash(const uint8_t* data, size_t len);
