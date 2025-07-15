@@ -89,6 +89,7 @@ uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *res
     *reslen = (uint32_t)vlen;
     return RES_OK;
 }
+//
 
 uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
     (void)res;
