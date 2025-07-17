@@ -14,8 +14,8 @@
 #include <poll.h>        // for poll
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
-
-
+#include "serialisation.h"
+#define ERR_2BIG 1001
 
 void fd_set_nb(int fd) {
     errno = 0;
@@ -76,24 +76,29 @@ bool one_request(Conn *conn) {
     if (4 + len > conn->rbuf_size) {
         return false;
     }
-    uint32_t rescode = 0;
-    uint32_t wlen = 0;
-    int32_t err = do_request(&conn->rbuf[4], len, &rescode, &conn->wbuf[4], &wlen);
+    std::vector<std::string> cmd;
+    if (0!=parse_req(&conn->rbuf[4],len, cmd)){
+        conn->state = STATE_END;
+        return false;
+    }
+    std::string out;
+    int32_t err = do_request(cmd, out);
     if (err != RES_OK) {
         printf("error in request processing");
         conn->state = STATE_END; // Mark the connection for deletion
         return false; // Indicate an error
     }
-    // Write response length (wlen + 4 for rescode) at the start
-    uint32_t total_len = wlen + 4;
-    memcpy(&conn->wbuf[0], &total_len, 4);
-    // Write response code
-    memcpy(&conn->wbuf[4], &rescode, 4);
-    // Write response data (if any)
-    if (wlen > 0) {
-        memcpy(&conn->wbuf[8], &conn->wbuf[4], wlen);
+    if (4+out.size() > k_max_msg) {
+        out.clear();
+        out_err(out, ERR_2BIG, "response is too big");
     }
-    conn->wbuf_size = 4 + 4 + wlen; // 4 for length, 4 for rescode, wlen for data
+    uint32_t wlen = (uint32_t)out.size();
+
+    memcpy(&conn->wbuf[0], &wlen, 4);
+    // Write response code
+    memcpy(&conn->wbuf[4], out.data(), out.size());
+    // Write response data (if any)
+    conn->wbuf_size = 4 + wlen; 
     printf("client says: %.*s\n", len, &conn->rbuf[4]);
     size_t remain = conn->rbuf_size - 4 - len;
     if (remain) {
