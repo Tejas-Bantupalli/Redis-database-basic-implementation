@@ -7,6 +7,7 @@
 #include <cassert>
 #include "hashtable.h"
 #include "utils.h"
+#include "serialisation.h"
 void die(const char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);
@@ -33,25 +34,22 @@ int32_t write_all(int fd, const char* buf, size_t len) {
     }
     return 0;
 }
-int32_t do_request(const uint8_t *data, uint32_t len, uint32_t *rescode, uint8_t *res, uint32_t *reslen) {
-    std::vector<std::string> cmd;
-    int32_t err = parse_req(data, len, cmd);
-    if (err != 0) {
-        return RES_ERR; // Indicate an error
-    }
+int32_t do_request(std::vector<std::string> &cmd, std::string &out) {
     if (cmd.empty()) {
         return RES_ERR; // Invalid command
     }
+    if (cmd[0] == "keys" && cmd.size() == 1) {
+        return do_keys(cmd, out);
+    }
     if (cmd[0] == "get" && cmd.size() == 2) {
-        return do_get(cmd, res, reslen);
+        return do_get(cmd, out);
     } else if (cmd[0] == "set" && cmd.size() == 3) {
-        return do_set(cmd, res, reslen);
+        return do_set(cmd, out);
     } else if (cmd[0] == "del" && cmd.size() == 2) {
-        return do_del(cmd, res, reslen);
+        return do_del(cmd, out);
     } else {
         return RES_ERR; // Unknown command
     }
-    return RES_ERR; // Default case for error handling
 }
 
 bool entry_eq(HNode *lhs, HNode *rhs) {
@@ -60,52 +58,51 @@ bool entry_eq(HNode *lhs, HNode *rhs) {
     return le->key == re->key;
 }
 
-uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
+uint32_t do_get(const std::vector<std::string> &cmd, std::string &out) {
     Entry key;
     key.key = cmd[1];
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
     HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
-    if (!node){
+    if (!node) {
+        printf("[DEBUG] do_get: RES_NX=%d\n", RES_NX);
+        out_int(out, RES_NX); // Not found
         return RES_NX;
     }
-    const std::string &value =  container_of(node,Entry,node)->val;
+    const std::string &value = container_of(node, Entry, node)->val;
     assert(value.size() <= k_max_msg);
-    memcpy(res, value.data(), value.size());
-    *reslen = (uint32_t)value.size();
+    out_str(out, value);
     return RES_OK;
 }
 
-uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
+uint32_t do_set(const std::vector<std::string> &cmd, std::string &out) {
     Entry* entry = new Entry;
     entry->key = cmd[1];
     entry->val = cmd[2];
     entry->node.hcode = str_hash((const uint8_t*)entry->key.data(), entry->key.size());
-    printf("[DEBUG] Allocating Entry at %p for key '%s'\n", (void*)entry, entry->key.c_str());
     hm_insert(&g_data.db, &entry->node);
-    // Echo the value back in the response
-    size_t vlen = entry->val.size();
-    if (vlen > k_max_msg) vlen = k_max_msg;
-    memcpy(res, entry->val.data(), vlen);
-    *reslen = (uint32_t)vlen;
+    printf("[DEBUG] do_set: RES_OK=%d\n", RES_OK);
+    out_int(out, RES_OK);
     return RES_OK;
 }
-//
 
-uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
-    (void)res;
-    (void)reslen;
-    // Create a temporary key for lookup only; do not insert stack-allocated Entry into the hash table
+uint32_t do_del(const std::vector<std::string> &cmd, std::string &out) {
     Entry key;
     key.key = cmd[1];
     key.node.hcode = str_hash((const uint8_t*)key.key.data(), key.key.size());
     HNode* node = hm_delete(&g_data.db, &key.node);
     if (node) {
-        // Only delete if node points to a heap-allocated Entry (which should always be the case)
-        Entry* entry = container_of(node, Entry, node);
-        printf("[DEBUG] Deleting Entry at %p for key '%s'\n", (void*)entry, entry->key.c_str());
-        delete entry;
-        node = nullptr; // Extra safety: avoid dangling pointer
+        delete container_of(node, Entry, node);
     }
+    printf("[DEBUG] do_del: node? %d\n", node ? 1 : 0);
+    out_int(out, node ? 1 : 0);
+    return RES_OK;
+}
+
+uint32_t do_keys(const std::vector<std::string> &cmd, std::string &out) {
+    (void)cmd;
+    out_arr(out, (uint32_t)hm_size(&g_data.db));
+    h_scan(&g_data.db.ht1, &cb_scan, &out);
+    h_scan(&g_data.db.ht2, &cb_scan, &out);
     return RES_OK;
 }
 

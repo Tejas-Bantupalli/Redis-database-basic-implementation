@@ -1,5 +1,3 @@
-#pragma once
-
 #include <cstdio>        // for printf, perror
 #include <cstdlib>       // for exit
 #include <cstring>       // for memset, strlen
@@ -16,31 +14,11 @@
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
 
-struct HNode {
-    HNode *next = NULL;
-    uint64_t hcode = 0; // cached hash value
+struct AVLNode {
+    uint32_t depth = 0;
+    uint32_t count = 0;
+    AVLNode *left = NULL;
+    AVLNode *right = NULL;
+    AVLNode *parent = NULL;
 };
 
-struct HTab {
-    HNode **tab = NULL;
-    size_t size = 0;
-    size_t mask = 0;
-};
-
-struct HMap {
-    HTab ht1; // newer
-    HTab ht2; // older
-    size_t resizing_pos = 0;
-};
-
-const size_t k_max_load_factor = 8;
-
-const size_t k_resizing_work = 128;
-
-void hm_insert(HMap *hmap, HNode *node);
-HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *));
-HNode *hm_delete(HMap *hmap, HNode *key);
-void h_scan(HTab *tab, void (*f)(HNode *, void *), void *arg);
-void cb_scan(HNode *node, void *arg);
-void cb_scan(HNode *node, void *arg);
-size_t hm_size(HMap *hmap);

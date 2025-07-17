@@ -16,6 +16,7 @@
 #include <sys/select.h>
 #include "utils.h"
 #include "hashtable.h"
+#include "serialisation.h"
 
 static void hinit(HTab *ht, size_t size) {
     assert(size > 0 && (size & (size - 1)) == 0); // size must be a power of 2
@@ -109,3 +110,27 @@ HNode *hm_delete(HMap *hmap, HNode *key) {
     if (!from) from = hlookup(&hmap->ht2, key, entry_eq);
     return from ? h_detach(&hmap->ht1, from) : NULL;
 }
+
+void h_scan(HTab *tab, void (*f)(HNode *, void *), void *arg) {
+    if (tab->size ==0) {
+        return;
+    }
+    for (size_t i =0; i< tab->mask +1;i++) {
+        HNode *node = tab->tab[i];
+        while (node) {
+            f(node, arg);
+            node = node->next;
+        }
+    }
+}
+
+void cb_scan(HNode *node, void *arg) {
+    std::string &out = *(std::string *)arg;
+    out_str(out,container_of(node,Entry,node)->key);
+}
+size_t hm_size(HMap *hmap) {
+    return hmap->ht1.size + hmap->ht2.size;
+}
+
+
+
