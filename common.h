@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <sys/select.h>
 #include "hashtable.h"
+#include "zset.h"
 #define k_max_args 4
 const size_t k_max_msg = 4096; // Maximum message size
 int32_t read_full(int fd, char* buf, size_t len);
@@ -44,12 +45,17 @@ struct Conn {
 };
 static struct {
     HMap db;
+    ZSet zset;
 } g_data;
 int32_t do_request(std::vector<std::string> &cmd, std::string &out);
 uint32_t do_get(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_set(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_del(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_keys(const std::vector<std::string> &cmd, std::string &out);
+uint32_t do_zadd(const std::vector<std::string> &cmd, std::string &out);
+uint32_t do_zscore(const std::vector<std::string> &cmd, std::string &out);
+uint32_t do_zrem(const std::vector<std::string> &cmd, std::string &out);
+uint32_t do_query(const std::vector<std::string> &cmd, std::string &out);
 int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &cmd);
 struct Entry {
     struct HNode node;

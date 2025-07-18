@@ -44,13 +44,26 @@ int32_t do_request(std::vector<std::string> &cmd, std::string &out) {
     if (cmd[0] == "keys" && cmd.size() == 1) {
         return do_keys(cmd, out);
     }
-    if (cmd[0] == "get" && cmd.size() == 2) {
+    else if (cmd[0] == "get" && cmd.size() == 2) {
         return do_get(cmd, out);
     } else if (cmd[0] == "set" && cmd.size() == 3) {
         return do_set(cmd, out);
     } else if (cmd[0] == "del" && cmd.size() == 2) {
         return do_del(cmd, out);
-    } else {
+    } else if (cmd[0] == "zadd"){
+        return do_zadd(cmd,out);
+    }
+    else if (cmd[0] == "zscore"){
+        return do_zscore(cmd,out);
+    }
+    else if (cmd[0] == "zrem"){
+        return do_zrem(cmd,out);
+    }
+    else if (cmd[0] == "zquery"){
+        return do_query(cmd,out);
+    }
+
+    else {
         return RES_ERR; // Unknown command
     }
 }
@@ -138,22 +151,66 @@ int32_t parse_req(const uint8_t  *data, size_t len, std::vector<std::string> &cm
     return 0; // Successfully parsed the request
 }
 
-void do_query(std::vector<std::string> &cmd, std::string &out) {
-    Entry ent;
-    ent.key = cmd[1];
+uint32_t do_zadd(const std::vector<std::string> &cmd, std::string &out) {
+    if (cmd.size() != 4) {
+        out_err(out, RES_ERR, "Usage: zadd <key> <score> <name>");
+        return RES_ERR;
+    }
     double score = std::stod(cmd[2]);
-    std::string name = cmd[3];
-    double offset = std::stod(cmd[4]);
-    double limit = std::stod(cmd[5]);
-    ent.node.hcode = str_hash((uint8_t *)ent.key.data(),ent.key.size());
-    ZNode *znode = zset_query(ent.zset, score, name.data(), name.size());
-    znode = znode_offset(znode,offset);
-    uint32_t n =0;
-    while (znode && (int64_t)n < limit) {
-        out_str(out, znode->name);
+    const std::string &name = cmd[3];
+    // Add or update the element in the global zset
+    bool added = zset_add(&g_data.zset, name.data(), name.size(), score);
+    out_int(out, added ? 1 : 0); // 1 if new, 0 if updated
+    return RES_OK;
+}
+
+uint32_t do_zscore(const std::vector<std::string> &cmd, std::string &out) {
+    if (cmd.size() != 3) {
+        out_err(out, RES_ERR, "Usage: zscore <key> <name>");
+        return RES_ERR;
+    }
+    const std::string &name = cmd[2];
+    ZNode *znode = zset_lookup(&g_data.zset, name.data(), name.size());
+    if (!znode) {
+        out_nil(out);
+        return RES_NX;
+    }
+    out_dbl(out, znode->score);
+    return RES_OK;
+}
+
+uint32_t do_zrem(const std::vector<std::string> &cmd, std::string &out) {
+    if (cmd.size() != 3) {
+        out_err(out, RES_ERR, "Usage: zrem <key> <name>");
+        return RES_ERR;
+    }
+    const std::string &name = cmd[2];
+    ZNode *znode = zset_pop(&g_data.zset, name.data(), name.size());
+    if (znode) {
+        out_int(out, 1);
+    } else {
+        out_int(out, 0);
+    }
+    return RES_OK;
+}
+
+uint32_t do_query(const std::vector<std::string> &cmd, std::string &out) {
+    if (cmd.size() != 6) {
+        out_err(out, RES_ERR, "Usage: zquery <key> <score> <name> <offset> <limit>");
+        return RES_ERR;
+    }
+    double score = std::stod(cmd[2]);
+    const std::string &name = cmd[3];
+    int64_t offset = std::stoll(cmd[4]);
+    int64_t limit = std::stoll(cmd[5]);
+    ZNode *znode = zset_query(&g_data.zset, score, name.data(), name.size());
+    znode = znode_offset(znode, offset);
+    uint32_t n = 0;
+    while (znode && n < (uint32_t)limit) {
+        out_str(out, std::string(znode->name, znode->len));
         out_dbl(out, znode->score);
         znode = znode_offset(znode, +1); // successor
-        n += 2;
+        n++;
     }
-
+    return RES_OK;
 }

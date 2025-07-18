@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdio>        // for printf, perror
 #include <cstdlib>       // for exit
 #include <cstring>       // for memset, strlen

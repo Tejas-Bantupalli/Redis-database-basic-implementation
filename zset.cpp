@@ -139,7 +139,7 @@ ZNode *zset_query(ZSet *zset, double score, const char *name, size_t len) {
     return found ? container_of(found, ZNode, tnode) : NULL;
 }
 
-AVLNode avl_offset(AVLNode *node, double offset) {
+AVLNode *avl_offset(AVLNode *node, double offset) {
     int64_t pos = 0;
     while (pos!=offset) {
         if (pos<offset & pos + avl_count(node->right)>=offset) {
@@ -161,7 +161,7 @@ AVLNode avl_offset(AVLNode *node, double offset) {
             else{
                 pos+=avl_count(node->right)+1;
             }
-            node->parent;
+            node = node->parent;
         }
     }
     return node;

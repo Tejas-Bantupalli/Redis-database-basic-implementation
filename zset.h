@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdio>        // for printf, perror
 #include <cstdlib>       // for exit
 #include <cstring>       // for memset, strlen
@@ -29,21 +30,9 @@ struct ZNode {
     char name[0];
 };
 
-enum {
-    T_STR = 0,
-    T_ZSET = 1,
-};
-
-struct Entry {
-    struct HNode node;
-    std::string key;
-    uint32_t type = 0;
-    std::string val;
-    ZSet *zset = NULL;
-
-};
-
-
-
 ZNode *zset_query(ZSet *zset, double score, const char *name, size_t len);
 ZNode *znode_offset(ZNode *node, int64_t offset);
+bool zset_add(ZSet *zset, const char *name, size_t len, double score);
+ZNode *zset_lookup(ZSet *zset, const char *name, size_t len);
+ZNode *zset_pop(ZSet *zset, const char *name, size_t len);
+void znode_del(ZNode *node);
