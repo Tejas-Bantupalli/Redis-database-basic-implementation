@@ -8,6 +8,9 @@
 #include "hashtable.h"
 #include "utils.h"
 #include "serialisation.h"
+#include "zset.h"
+
+
 void die(const char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);
@@ -135,3 +138,22 @@ int32_t parse_req(const uint8_t  *data, size_t len, std::vector<std::string> &cm
     return 0; // Successfully parsed the request
 }
 
+void do_query(std::vector<std::string> &cmd, std::string &out) {
+    Entry ent;
+    ent.key = cmd[1];
+    double score = std::stod(cmd[2]);
+    std::string name = cmd[3];
+    double offset = std::stod(cmd[4]);
+    double limit = std::stod(cmd[5]);
+    ent.node.hcode = str_hash((uint8_t *)ent.key.data(),ent.key.size());
+    ZNode *znode = zset_query(ent.zset, score, name.data(), name.size());
+    znode = znode_offset(znode,offset);
+    uint32_t n =0;
+    while (znode && (int64_t)n < limit) {
+        out_str(out, znode->name);
+        out_dbl(out, znode->score);
+        znode = znode_offset(znode, +1); // successor
+        n += 2;
+    }
+
+}

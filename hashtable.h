@@ -33,6 +33,12 @@ struct HMap {
     size_t resizing_pos = 0;
 };
 
+struct HKey {
+    HNode node;
+    const char *name = NULL;
+    size_t len =0;
+};
+
 const size_t k_max_load_factor = 8;
 
 const size_t k_resizing_work = 128;

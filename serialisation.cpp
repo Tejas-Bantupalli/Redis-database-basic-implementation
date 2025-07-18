@@ -36,11 +36,7 @@ void out_str(std::string &out, const std::string &val) {
 }
 
 void out_int(std::string &out, int64_t val) {
-#ifdef htobe64
-    printf("[DEBUG] htobe64 macro is defined\n");
-#else
-    printf("[DEBUG] htobe64 macro is NOT defined\n");
-#endif
+
     out.push_back(SER_INT);
     int64_t nval = htobe64(val);
     out.append((char *)&nval, 8);
@@ -52,6 +48,19 @@ void out_int(std::string &out, int64_t val) {
     printf("\n");
 }
 
+
+void out_dbl(std::string &out, int64_t val) {
+
+    out.push_back(SER_DOUBLE);
+    int64_t nval = htobe64(val);
+    out.append((char *)&nval, 8);
+    // Debug print
+    printf("[DEBUG] out_int: val=%lld, nval=0x%016llx\n", (long long)val, (unsigned long long)nval);
+    for (int i = 0; i < 8; ++i) {
+        printf("%02x ", ((unsigned char*)&nval)[i]);
+    }
+    printf("\n");
+}
 void out_err(std::string &out, int32_t code, const std::string &msg) {
     out.push_back(SER_ERR);
     out.append((char *)&code, 4);

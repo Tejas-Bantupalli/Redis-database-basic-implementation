@@ -21,4 +21,7 @@ struct AVLNode {
     AVLNode *right = NULL;
     AVLNode *parent = NULL;
 };
-
+uint32_t avl_count(AVLNode *node);
+AVLNode *avl_fix(AVLNode *node);
+AVLNode *avl_del(AVLNode *node);
+void avl_init(AVLNode *node);

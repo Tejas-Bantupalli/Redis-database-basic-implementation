@@ -96,20 +96,6 @@ AVLNode *avl_fix(AVLNode *node) {
 }
 
 AVLNode *avl_del(AVLNode *node) {
-    if (node->right ==NULL) {
-        AVLNode *parent = node->parent;
-        if (node->left) {
-            node->left->parent = parent;
-        }
-        if (parent) {
-            (parent->left ==node ? parent->left : parent->right) = node->left;
-            return avl_fix(parent);
-        }
-        else return node->left;
-    }
-}
-
-static AVLNode *avl_del(AVLNode *node) {
     if (node->right == NULL) {
         // no right subtree, replace the node with the left subtree
         // link the left subtree to the parent

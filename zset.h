@@ -13,18 +13,37 @@
 #include <poll.h>        // for poll
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
-enum {
-    SER_NIL = 0, // Like `NULL`
-    SER_ERR = 1, // An error code and message
-    SER_STR = 2, // A string
-    SER_INT = 3, // A int64
-    SER_ARR = 4, // Array
-    SER_DOUBLE = 5,
+#include "hashtable.h" 
+#include "AVL.h"
+
+struct ZSet {
+    AVLNode *tree = NULL;
+    HMap hmap;
 };
 
-void out_nil(std::string &out);
-void out_str(std::string &out, const std::string &val);
-void out_int(std::string &out, int64_t val);
-void out_err(std::string &out, int32_t code, const std::string &msg);
-void out_arr(std::string &out, uint32_t n);
-void out_dbl(std::string &out, int64_t val);
+struct ZNode {
+    AVLNode tnode;
+    HNode hnode;
+    double score = 0;
+    size_t len = 0;
+    char name[0];
+};
+
+enum {
+    T_STR = 0,
+    T_ZSET = 1,
+};
+
+struct Entry {
+    struct HNode node;
+    std::string key;
+    uint32_t type = 0;
+    std::string val;
+    ZSet *zset = NULL;
+
+};
+
+
+
+ZNode *zset_query(ZSet *zset, double score, const char *name, size_t len);
+ZNode *znode_offset(ZNode *node, int64_t offset);
