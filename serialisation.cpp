@@ -49,13 +49,15 @@ void out_int(std::string &out, int64_t val) {
 }
 
 
-void out_dbl(std::string &out, int64_t val) {
-
+void out_dbl(std::string &out, double val) {
     out.push_back(SER_DOUBLE);
-    int64_t nval = htobe64(val);
+    uint64_t nval;
+    static_assert(sizeof(double) == sizeof(uint64_t), "double must be 8 bytes");
+    memcpy(&nval, &val, sizeof(double));
+    nval = htobe64(nval);
     out.append((char *)&nval, 8);
     // Debug print
-    printf("[DEBUG] out_int: val=%lld, nval=0x%016llx\n", (long long)val, (unsigned long long)nval);
+    printf("[DEBUG] out_dbl: val=%f, nval=0x%016llx\n", val, (unsigned long long)nval);
     for (int i = 0; i < 8; ++i) {
         printf("%02x ", ((unsigned char*)&nval)[i]);
     }

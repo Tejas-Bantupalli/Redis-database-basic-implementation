@@ -28,4 +28,4 @@ void out_str(std::string &out, const std::string &val);
 void out_int(std::string &out, int64_t val);
 void out_err(std::string &out, int32_t code, const std::string &msg);
 void out_arr(std::string &out, uint32_t n);
-void out_dbl(std::string &out, int64_t val);
+void out_dbl(std::string &out, double val);
