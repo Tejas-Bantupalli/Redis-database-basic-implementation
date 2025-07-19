@@ -15,6 +15,7 @@
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
 #include "serialisation.h"
+#include "timer.h"
 #define ERR_2BIG 1001
 
 void fd_set_nb(int fd) {
@@ -138,11 +139,21 @@ void statereq(Conn *conn) {
     while (try_fill_buffer(conn)){}
 }
 
+void conn_put(std::vector<Conn *> &fd2conn, Conn *conn) {
+    if (fd2conn.size() <= (size_t)conn->fd) {
+        fd2conn.resize(conn->fd + 1, nullptr);
+    }
+    fd2conn[conn->fd] = conn;
+}
+
 
 
 
 
 void connection_io(Conn *conn){
+    conn->idle_start = get_monotonic_usec();
+    dlist_detach(&conn->idle_list);
+    list_insert_before(&g_data.idle_list, &conn->idle_list);
     if (conn->state == STATE_REQ){
         statereq(conn);
     }

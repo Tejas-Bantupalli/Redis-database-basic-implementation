@@ -15,8 +15,10 @@
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
 #include "utils.h"
+#include "DList.h"
+#include "timer.h"
 
-static int32_t accept_new_connection(int fd, std::vector<Conn *> &f2dconn) {
+static int32_t accept_new_connection(int fd, std::vector<Conn *> &fd2conn) {
     struct sockaddr_in addr = {};
     socklen_t addr_len = sizeof(addr);
     int new_fd = accept(fd, (struct sockaddr *)&addr, &addr_len);
@@ -30,15 +32,19 @@ static int32_t accept_new_connection(int fd, std::vector<Conn *> &f2dconn) {
         close(new_fd);
         return -1;
     }
+    // Initialize the connection structure
+    memset(conn, 0, sizeof(Conn));
     conn->fd = new_fd;
     conn->state = STATE_REQ;
     conn->rbuf_size = 0;
     conn->wbuf_size = 0;
     conn->wbuf_sent = 0;
-    if (f2dconn.size() <= (size_t)new_fd) {
-        f2dconn.resize(new_fd + 1, nullptr); // Resize to accommodate new_fd
-    }
-    f2dconn[new_fd] = conn;
+    conn->idle_start = get_monotonic_usec();
+    
+    // Initialize the idle_list before inserting it
+    dList_init(&conn->idle_list);
+    list_insert_before(&g_data.idle_list, &conn->idle_list);
+    conn_put(fd2conn, conn);
     return 0;
 }
 
@@ -47,6 +53,7 @@ int main() {
     if (fd < 0) {
         die("socket()");
     }
+    dList_init(&g_data.idle_list);
 
     int val = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
@@ -65,14 +72,17 @@ int main() {
     if (rv) {
         die("listen()");
     }
-    std::vector<Conn *> f2dconn;
     fd_set_nb(fd); // Set the socket to non-blocking mode
     std::vector<struct pollfd> poll_args;
     while (true) {
         poll_args.clear();
-        struct pollfd pfd = {fd,POLLIN,0};
+        
+        // Add the listening socket
+        struct pollfd pfd = {fd, POLLIN, 0};
         poll_args.push_back(pfd);
-        for (Conn *conn : f2dconn) {
+        
+        // Add all client connections
+        for (Conn *conn : g_data.fd2conn) {
             if (!conn) continue; // Skip null pointers
             struct pollfd pfd = {};
             pfd.fd = conn->fd;
@@ -80,29 +90,43 @@ int main() {
             pfd.events = pfd.events | POLLERR;
             poll_args.push_back(pfd);
         }
-        int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
+        
+        int timeout_ms = (int)next_timer_ms();
+        int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), timeout_ms);
         if (rv < 0) {
             die("poll()");
         }
-        for (size_t i =0;i< poll_args.size();i++){
-            if (poll_args[i].revents){
-                int fd = poll_args[i].fd;
-                if (fd < 0 || fd >= (int)f2dconn.size()) continue; // skip invalid fds
-                Conn *conn = f2dconn[fd];
-                if (!conn) continue; // skip if no connection
-                connection_io(conn);
-                if (conn->state == STATE_END) {
-                    f2dconn[conn->fd] = nullptr; // Mark for deletion
-                    (void)close(conn->fd); // Close the socket
-                    free(conn); // Free the memory
+        
+        // Handle events
+        for (size_t i = 0; i < poll_args.size(); i++) {
+            if (poll_args[i].revents) {
+                if (i == 0) {
+                    // This is the listening socket
+                    (void)accept_new_connection(fd, g_data.fd2conn);
+                } else {
+                    // This is a client connection
+                    int client_fd = poll_args[i].fd;
+                    if (client_fd < 0 || client_fd >= (int)g_data.fd2conn.size()) {
+                        continue;
+                    }
+                    Conn *conn = g_data.fd2conn[client_fd];
+                    if (!conn) {
+                        continue;
+                    }
+                    
+                    connection_io(conn);
+                    if (conn->state == STATE_END) {
+                        g_data.fd2conn[conn->fd] = NULL;
+                        (void)close(conn->fd);
+                        dlist_detach(&conn->idle_list);
+                        free(conn);
+                    }
                 }
             }
         }
-        if (poll_args[0].revents) {
-            (void)accept_new_connection(fd, f2dconn);
-        }
         
-
+        // Process idle timeouts
+        process_timers();
     }
     return 0;
 }

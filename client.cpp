@@ -187,6 +187,10 @@ int main(int argc, char **argv) {
         return 1;
     }
     err = read_resp(fd);
+    if (err) {
+        close(fd);
+        return 1;
+    }
     close(fd);
-    return err ? 1 : 0;
+    return 0;
 }

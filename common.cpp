@@ -19,7 +19,16 @@ void die(const char* msg) {
 int32_t read_full(int fd, char* buf, size_t len) {
     while (len > 0) {
         ssize_t rv = read(fd, buf, len);
-        if (rv <= 0) return -1;
+        if (rv <= 0) {
+            if (rv == 0) {
+                // EOF - connection closed by peer
+                return -1;
+            }
+            if (errno == EINTR) {
+                continue; // Interrupted, try again
+            }
+            return -1; // Other error
+        }
         assert((size_t)rv <= len);
         buf += rv;
         len -= rv;
@@ -30,7 +39,16 @@ int32_t read_full(int fd, char* buf, size_t len) {
 int32_t write_all(int fd, const char* buf, size_t len) {
     while (len > 0) {
         ssize_t rv = write(fd, buf, len);
-        if (rv <= 0) return -1;
+        if (rv <= 0) {
+            if (rv == 0) {
+                // Write returned 0, which shouldn't happen normally
+                return -1;
+            }
+            if (errno == EINTR) {
+                continue; // Interrupted, try again
+            }
+            return -1; // Other error
+        }
         assert((size_t)rv <= len);
         buf += rv;
         len -= rv;
@@ -214,3 +232,6 @@ uint32_t do_query(const std::vector<std::string> &cmd, std::string &out) {
     }
     return RES_OK;
 }
+
+// Global data definition
+GlobalData g_data = {};

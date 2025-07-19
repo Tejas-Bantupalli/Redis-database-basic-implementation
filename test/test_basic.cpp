@@ -7,6 +7,7 @@
 #include "../zset.h"
 #include "../utils.h"
 #include "../serialisation.h"
+#include "../timer.h"
 #include <cmath>
 #if defined(__APPLE__)
 #include <libkern/OSByteOrder.h>
@@ -140,10 +141,25 @@ void test_edge_cases() {
     }
 }
 
+void test_timer_basics() {
+    std::cout << "Testing timer basics..." << std::endl;
+    
+    // Test get_monotonic_usec
+    uint64_t start = get_monotonic_usec();
+    assert(start > 0);
+    
+    // Test next_timer_ms with empty idle list
+    uint32_t timeout = next_timer_ms();
+    assert(timeout == 10000); // Should return 10 seconds for empty list
+    
+    std::cout << "  Timer basics test passed!" << std::endl;
+}
+
 int main() {
     test_set_get_del_keys();
     test_zset();
     test_edge_cases();
+    test_timer_basics();
     std::cout << "All tests passed!\n";
     return 0;
 } 

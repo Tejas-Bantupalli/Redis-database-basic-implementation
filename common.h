@@ -17,6 +17,8 @@
 #include <sys/select.h>
 #include "hashtable.h"
 #include "zset.h"
+#include "DList.h"
+
 #define k_max_args 4
 const size_t k_max_msg = 4096; // Maximum message size
 int32_t read_full(int fd, char* buf, size_t len);
@@ -42,11 +44,17 @@ struct Conn {
     size_t wbuf_size = 0;
     size_t wbuf_sent = 0;
     uint8_t wbuf[4 + k_max_msg];
+    uint64_t idle_start = 0;
+    DList idle_list;
 };
-static struct {
+struct GlobalData {
     HMap db;
     ZSet zset;
-} g_data;
+    std::vector<Conn *> fd2conn;
+    DList idle_list;
+};
+
+extern GlobalData g_data;
 int32_t do_request(std::vector<std::string> &cmd, std::string &out);
 uint32_t do_get(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_set(const std::vector<std::string> &cmd, std::string &out);
