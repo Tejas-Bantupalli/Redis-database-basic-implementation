@@ -9,12 +9,43 @@
 #include "utils.h"
 #include "serialisation.h"
 #include "zset.h"
+#include "heap.h"
 
+GlobalData g_data;
 
 void die(const char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);
 }
+
+void entry_set_ttl(Entry *ent, int64_t ttl_ms) {
+    if (ttl_ms < 0 && ent->heap_idx != (size_t)-1) {
+        size_t pos = ent->heap_idx;
+        size_t last = g_data.heap.size() - 1;
+        if (pos != last) {
+            g_data.heap[pos] = g_data.heap[last];
+            *g_data.heap[pos].ref = pos;
+        }
+        g_data.heap.pop_back();
+        if (pos < g_data.heap.size()) {
+            heap_update(g_data.heap.data(), pos, g_data.heap.size());
+        }
+        ent->heap_idx = -1;
+    } else if (ttl_ms >= 0) {
+        size_t pos = ent->heap_idx;
+        if (pos == (size_t)-1) {
+            HeapItem item;
+            item.ref = &ent->heap_idx;
+            g_data.heap.push_back(item);
+            pos = g_data.heap.size() - 1;
+            ent->heap_idx = pos;
+        }
+        g_data.heap[pos].val = get_monotonic_usec() + (uint64_t)ttl_ms * 1000;
+        heap_update(g_data.heap.data(), pos, g_data.heap.size());
+    }
+}
+
+
 
 int32_t read_full(int fd, char* buf, size_t len) {
     while (len > 0) {
@@ -80,7 +111,12 @@ int32_t do_request(std::vector<std::string> &cmd, std::string &out) {
     else if (cmd[0] == "zquery"){
         return do_query(cmd,out);
     }
-
+    else if (cmd[0] == "expire" && cmd.size() == 3) {
+        return do_expire(cmd, out);
+    }
+    else if (cmd[0] == "ttl" && cmd.size() == 2) {
+        return do_ttl(cmd, out);
+    }
     else {
         return RES_ERR; // Unknown command
     }
@@ -233,5 +269,55 @@ uint32_t do_query(const std::vector<std::string> &cmd, std::string &out) {
     return RES_OK;
 }
 
-// Global data definition
-GlobalData g_data = {};
+uint32_t do_expire(std::vector<std::string> &cmd, std::string &out) {
+    int64_t ttl_ms = 0;
+    if (!str2int(cmd[2], ttl_ms)) {
+        out_err(out, RES_ERR, "expect int64");
+        return RES_ERR;
+    }
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (node) {
+        Entry *ent = container_of(node, Entry, node);
+        entry_set_ttl(ent, ttl_ms);
+    }
+    out_int(out, node ? 1 : 0);
+    return RES_OK;
+}
+
+uint32_t do_ttl(std::vector<std::string> &cmd, std::string &out) {
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (!node) {
+        out_int(out, -2);
+        return RES_OK;
+    }
+    Entry *ent = container_of(node, Entry, node);
+    if (ent->heap_idx == (size_t)-1) {
+        out_int(out, -1);
+        return RES_OK;
+    }
+    uint64_t expire_at = g_data.heap[ent->heap_idx].val;
+    uint64_t now_us = get_monotonic_usec();
+    out_int(out, expire_at > now_us ? (expire_at - now_us) / 1000 : 0);
+    return RES_OK;
+}
+
+bool str2int(const std::string &s, int64_t &out) {
+    char *end = nullptr;
+    errno = 0;
+    long long val = strtoll(s.c_str(), &end, 10);
+    if (errno != 0 || end != s.c_str() + s.size()) {
+        return false;
+    }
+    out = val;
+    return true;
+}
+
+void entry_del(Entry *ent) {
+    delete ent;
+}

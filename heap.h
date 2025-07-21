@@ -1,4 +1,5 @@
 #pragma once
+
 #include <cstdio>        // for printf, perror
 #include <cstdlib>       // for exit
 #include <cstring>       // for memset, strlen
@@ -15,8 +16,12 @@
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
 
-const uint64_t k_idle_timeout_ms = 5*1000;
 
-uint64_t get_monotonic_usec();
-uint32_t next_timer_ms();
-void process_timers();
+struct HeapItem {
+    uint64_t val = 0;
+    size_t *ref = NULL;
+};
+
+void heap_update(HeapItem *a, size_t pos, size_t len);
+void heap_down(HeapItem *a, size_t pos, size_t len);
+void heap_up(HeapItem *a, size_t pos);

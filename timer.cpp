@@ -50,5 +50,30 @@ void process_timers() {
         dlist_detach(&next->idle_list);
         free(next); // Free the memory
     }
-    
+    const size_t k_max_works = 2000;
+    size_t nworks = 0;
+    while (!g_data.heap.empty() && g_data.heap[0].val < now_us) {
+        Entry *ent = container_of(g_data.heap[0].ref, Entry, heap_idx);
+        // Remove from hash table
+        HNode *node = hm_delete(&g_data.db, &ent->node);
+        assert(node == &ent->node);
+        // Remove from heap
+        size_t pos = ent->heap_idx;
+        size_t last = g_data.heap.size() - 1;
+        if (pos != last) {
+            g_data.heap[pos] = g_data.heap[last];
+            *g_data.heap[pos].ref = pos;
+        }
+        g_data.heap.pop_back();
+        if (pos < g_data.heap.size()) {
+            heap_update(g_data.heap.data(), pos, g_data.heap.size());
+        }
+        ent->heap_idx = -1;
+        // Delete entry
+        entry_del(ent);
+        if (nworks++ >= k_max_works) {
+            // don't stall the server if too many keys are expiring at once
+            break;
+        }
+    }
 }

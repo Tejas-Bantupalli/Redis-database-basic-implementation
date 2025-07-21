@@ -18,6 +18,9 @@
 #include "hashtable.h"
 #include "zset.h"
 #include "DList.h"
+#include "heap.h"
+#include "timer.h"
+#include "serialisation.h"
 
 #define k_max_args 4
 const size_t k_max_msg = 4096; // Maximum message size
@@ -52,6 +55,7 @@ struct GlobalData {
     ZSet zset;
     std::vector<Conn *> fd2conn;
     DList idle_list;
+    std::vector<HeapItem> heap;
 };
 
 extern GlobalData g_data;
@@ -64,11 +68,16 @@ uint32_t do_zadd(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_zscore(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_zrem(const std::vector<std::string> &cmd, std::string &out);
 uint32_t do_query(const std::vector<std::string> &cmd, std::string &out);
+uint32_t do_expire(std::vector<std::string> &cmd, std::string &out);
+uint32_t do_ttl(std::vector<std::string> &cmd, std::string &out);
 int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &cmd);
 struct Entry {
     struct HNode node;
     std::string key;
     std::string val;
+    uint32_t type = 0;
+    ZSet *zset = NULL;
+    size_t heap_idx = -1;
 };
 // Portable C++ version of container_of macro
 #include <cstddef>
@@ -77,5 +86,7 @@ struct Entry {
 
 // entry_eq macro removed; use the function version in common.cpp
 bool entry_eq(HNode *lhs, HNode *rhs);
+bool str2int(const std::string &s, int64_t &out);
+void entry_del(Entry *ent);
     
     

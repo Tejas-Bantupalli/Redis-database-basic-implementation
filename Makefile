@@ -2,10 +2,10 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g
 LDFLAGS =
 
-SRV_SRC = Server.cpp common.cpp hashtable.cpp serialisation.cpp zset.cpp utils.cpp AVL.cpp timer.cpp DList.cpp
+SRV_SRC = Server.cpp common.cpp hashtable.cpp serialisation.cpp zset.cpp utils.cpp AVL.cpp timer.cpp DList.cpp heap.cpp
 SRV_OBJ = $(SRV_SRC:.cpp=.o)
 
-CLI_SRC = client.cpp common.cpp hashtable.cpp serialisation.cpp zset.cpp utils.cpp AVL.cpp timer.cpp DList.cpp
+CLI_SRC = client.cpp common.cpp hashtable.cpp serialisation.cpp zset.cpp utils.cpp AVL.cpp timer.cpp DList.cpp heap.cpp
 CLI_OBJ = $(CLI_SRC:.cpp=.o)
 
 BIN_SERVER = server
