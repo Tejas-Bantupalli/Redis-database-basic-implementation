@@ -148,6 +148,8 @@ uint32_t do_set(const std::vector<std::string> &cmd, std::string &out) {
     Entry* entry = new Entry;
     entry->key = cmd[1];
     entry->val = cmd[2];
+    entry->type = 0; // string type
+    entry->zset = nullptr;
     entry->node.hcode = str_hash((const uint8_t*)entry->key.data(), entry->key.size());
     hm_insert(&g_data.db, &entry->node);
     printf("[DEBUG] do_set: RES_OK=%d\n", RES_OK);
@@ -161,7 +163,7 @@ uint32_t do_del(const std::vector<std::string> &cmd, std::string &out) {
     key.node.hcode = str_hash((const uint8_t*)key.key.data(), key.key.size());
     HNode* node = hm_delete(&g_data.db, &key.node);
     if (node) {
-        delete container_of(node, Entry, node);
+        entry_del(container_of(node, Entry, node));
     }
     printf("[DEBUG] do_del: node? %d\n", node ? 1 : 0);
     out_int(out, node ? 1 : 0);
@@ -212,8 +214,24 @@ uint32_t do_zadd(const std::vector<std::string> &cmd, std::string &out) {
     }
     double score = std::stod(cmd[2]);
     const std::string &name = cmd[3];
-    // Add or update the element in the global zset
-    bool added = zset_add(&g_data.zset, name.data(), name.size(), score);
+    // Look up or create the zset entry in the DB
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((const uint8_t*)key.key.data(), key.key.size());
+    HNode* node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    Entry* entry = nullptr;
+    if (!node) {
+        entry = new Entry;
+        entry->key = cmd[1];
+        entry->val = "";
+        entry->type = 1; // ZSet type
+        entry->zset = new ZSet();
+        entry->node.hcode = key.node.hcode;
+        hm_insert(&g_data.db, &entry->node);
+    } else {
+        entry = container_of(node, Entry, node);
+    }
+    bool added = zset_add(entry->zset, name.data(), name.size(), score);
     out_int(out, added ? 1 : 0); // 1 if new, 0 if updated
     return RES_OK;
 }
@@ -223,8 +241,21 @@ uint32_t do_zscore(const std::vector<std::string> &cmd, std::string &out) {
         out_err(out, RES_ERR, "Usage: zscore <key> <name>");
         return RES_ERR;
     }
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (!node) {
+        out_nil(out);
+        return RES_NX;
+    }
+    Entry *entry = container_of(node, Entry, node);
+    if (entry->type != 1 || !entry->zset) {
+        out_nil(out);
+        return RES_NX;
+    }
     const std::string &name = cmd[2];
-    ZNode *znode = zset_lookup(&g_data.zset, name.data(), name.size());
+    ZNode *znode = zset_lookup(entry->zset, name.data(), name.size());
     if (!znode) {
         out_nil(out);
         return RES_NX;
@@ -238,9 +269,23 @@ uint32_t do_zrem(const std::vector<std::string> &cmd, std::string &out) {
         out_err(out, RES_ERR, "Usage: zrem <key> <name>");
         return RES_ERR;
     }
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (!node) {
+        out_int(out, 0);
+        return RES_OK;
+    }
+    Entry *entry = container_of(node, Entry, node);
+    if (entry->type != 1 || !entry->zset) {
+        out_int(out, 0);
+        return RES_OK;
+    }
     const std::string &name = cmd[2];
-    ZNode *znode = zset_pop(&g_data.zset, name.data(), name.size());
+    ZNode *znode = zset_pop(entry->zset, name.data(), name.size());
     if (znode) {
+        znode_del(znode);
         out_int(out, 1);
     } else {
         out_int(out, 0);
@@ -253,11 +298,22 @@ uint32_t do_query(const std::vector<std::string> &cmd, std::string &out) {
         out_err(out, RES_ERR, "Usage: zquery <key> <score> <name> <offset> <limit>");
         return RES_ERR;
     }
+    Entry key;
+    key.key = cmd[1];
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, entry_eq);
+    if (!node) {
+        return RES_NX;
+    }
+    Entry *entry = container_of(node, Entry, node);
+    if (entry->type != 1 || !entry->zset) {
+        return RES_NX;
+    }
     double score = std::stod(cmd[2]);
     const std::string &name = cmd[3];
     int64_t offset = std::stoll(cmd[4]);
     int64_t limit = std::stoll(cmd[5]);
-    ZNode *znode = zset_query(&g_data.zset, score, name.data(), name.size());
+    ZNode *znode = zset_query(entry->zset, score, name.data(), name.size());
     znode = znode_offset(znode, offset);
     uint32_t n = 0;
     while (znode && n < (uint32_t)limit) {
@@ -318,6 +374,25 @@ bool str2int(const std::string &s, int64_t &out) {
     return true;
 }
 
-void entry_del(Entry *ent) {
+// Threaded ZSet destructor
+static void threaded_zset_destructor(void* arg) {
+    Entry* ent = (Entry*)arg;
+    if (ent->zset) {
+        // Free all ZSet nodes and the ZSet itself
+        // Free AVL tree nodes (if any)
+        // Free hash map inside ZSet
+        // For simplicity, just delete the ZSet (assuming its destructor is correct)
+        delete ent->zset;
+        ent->zset = nullptr;
+    }
     delete ent;
+}
+
+void entry_del(Entry *ent) {
+    if (ent->type == 1 && ent->zset) {
+        // Offload ZSet deletion to thread pool
+        thread_pool_queue(&g_data.tp, threaded_zset_destructor, ent);
+    } else {
+        delete ent;
+    }
 }

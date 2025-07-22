@@ -54,6 +54,7 @@ int main() {
         die("socket()");
     }
     dList_init(&g_data.idle_list);
+    thread_pool_init(&g_data.tp, 4);
 
     int val = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));

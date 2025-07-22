@@ -11,29 +11,20 @@
 #include <arpa/inet.h>   // for inet_ntop (if needed)
 #include <sys/types.h>  // for ssize_t
 #include <vector>
+#include <deque>
 #include <poll.h>        // for poll
 #include <fcntl.h>       // for fcntl, O_NONBLOCK
 #include <sys/select.h>
-#include "hashtable.h" 
-#include "AVL.h"
 
-struct ZSet {
-    AVLNode *tree = NULL;
-    HMap hmap;
-    ~ZSet();
+struct Work {
+    void (*f)(void *) = NULL;
+    void *arg = NULL;
 };
-
-struct ZNode {
-    AVLNode tnode;
-    HNode hnode;
-    double score = 0;
-    size_t len = 0;
-    char name[0];
+struct ThreadPool {
+    std::vector<pthread_t> threads;
+    std::deque<Work> queue;
+    pthread_mutex_t mu;
+    pthread_cond_t not_empty;
 };
-
-ZNode *zset_query(ZSet *zset, double score, const char *name, size_t len);
-ZNode *znode_offset(ZNode *node, int64_t offset);
-bool zset_add(ZSet *zset, const char *name, size_t len, double score);
-ZNode *zset_lookup(ZSet *zset, const char *name, size_t len);
-ZNode *zset_pop(ZSet *zset, const char *name, size_t len);
-void znode_del(ZNode *node);
+void thread_pool_queue(ThreadPool *tp, void (*f)(void *), void *arg);
+void thread_pool_init(ThreadPool *tp, size_t num_threads);

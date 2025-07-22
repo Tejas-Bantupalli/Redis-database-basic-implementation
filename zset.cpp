@@ -173,3 +173,18 @@ ZNode *znode_offset(ZNode *node, int64_t offset) {
     return tnode ? container_of(tnode, ZNode, tnode) : NULL;
 }
 
+// Helper to recursively free AVL tree nodes
+static void free_avl_nodes(AVLNode* node) {
+    if (!node) return;
+    free_avl_nodes(node->left);
+    free_avl_nodes(node->right);
+    ZNode* znode = container_of(node, ZNode, tnode);
+    free(znode);
+}
+
+ZSet::~ZSet() {
+    free_avl_nodes(tree);
+    tree = nullptr;
+    // Clear hash map (nodes already freed)
+}
+

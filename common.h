@@ -21,6 +21,7 @@
 #include "heap.h"
 #include "timer.h"
 #include "serialisation.h"
+#include "thread.h"
 
 #define k_max_args 4
 const size_t k_max_msg = 4096; // Maximum message size
@@ -56,6 +57,7 @@ struct GlobalData {
     std::vector<Conn *> fd2conn;
     DList idle_list;
     std::vector<HeapItem> heap;
+    ThreadPool tp;
 };
 
 extern GlobalData g_data;
