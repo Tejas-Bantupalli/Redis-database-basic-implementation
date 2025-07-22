@@ -66,14 +66,6 @@ The server listens on `localhost:1234`.
 
 ---
 
-## Limitations
-
-- **No Persistence:** All data is lost when the server stops.
-- **Single-threaded Command Processing:** Only deletion of sorted sets is multi-threaded.
-- **No Authentication or Security:** Intended for educational/demo purposes.
-
----
-
 ## Project Structure
 
 - `server` / `Server.cpp` — Main server binary and logic
@@ -84,13 +76,3 @@ The server listens on `localhost:1234`.
 - `test/` — Test code
 
 ---
-
-## License
-
-MIT License (or specify your own)
-
----
-
-## Credits
-
-Inspired by Redis and its data structures.
