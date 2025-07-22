@@ -1,32 +1,96 @@
-# Redis-database-basic-implementation
-This repository contains the source code for a basic Redis-like key-value store server and client written entirely in C++. The server listens for incoming connections and supports basic commands to manipulate the key-value store. The client can send requests to the server to perform operations like setting, getting, and deleting keys.
+# Redis-like In-Memory Database (C++)
 
-Features
+A high-performance, in-memory key-value database inspired by Redis, implemented in modern C++. This project features a custom binary protocol, efficient data structures, and basic multi-threading for background cleanup.
 
-Server:
+---
 
-1.Handles multiple client connections using polling.
+## Features
 
-2.Supports commands: set, get, del, keys.
+- **In-Memory Storage:** All data is stored in RAM for ultra-fast access (no persistence to disk).
+- **Key-Value Store:** Supports basic commands: `SET`, `GET`, `DEL`, `KEYS`.
+- **Sorted Sets:** Redis-like sorted set operations: `ZADD`, `ZSCORE`, `ZREM`, `ZQUERY`.
+- **Expiration:** Keys can be set to expire automatically.
+- **Custom Protocol:** Efficient binary protocol for client-server communication over TCP.
+- **Multi-threaded Cleanup:** Uses a thread pool to safely delete complex data structures in the background.
+- **Event-driven Server:** Handles multiple clients using non-blocking I/O and `poll`.
 
-3.Manages key-value pairs in a global map.
+---
 
-4.Provides a basic hashtable with dynamic resizing.
+## Getting Started
 
-5.Gracefully shuts down on receiving termination signals.
+### Prerequisites
 
-Client:
+- C++17 compatible compiler (e.g., `g++`)
+- Unix-like OS (Linux, macOS)
 
-1.Connects to the server and sends commands.
+### Build
 
-2.Receives and prints responses from the server.
+```sh
+make
+```
 
-Commands:
+This will build both the server and client binaries.
 
-1.set <key> <value>: Sets the value for the specified key.
+---
 
-2.get <key>: Retrieves the value for the specified key.
+## Usage
 
-3.del <key>: Deletes the specified key.
+### Start the Server
 
-4.keys: Lists all keys in the store.
+```sh
+./server
+```
+
+The server listens on `localhost:1234`.
+
+### Run a Client Command
+
+```sh
+./client set mykey myvalue
+./client get mykey
+./client del mykey
+./client keys
+./client zadd myzset 42.0 alice
+./client zscore myzset alice
+./client zrem myzset alice
+```
+
+---
+
+## Architecture
+
+- **Server:** Handles TCP connections, parses commands, and operates on in-memory data structures.
+- **Client:** Sends commands to the server using the custom protocol.
+- **Data Structures:** Custom hash tables, AVL trees, doubly linked lists, heaps, and thread pools.
+- **Thread Pool:** Used for background deletion of sorted sets to avoid blocking the main server loop.
+
+---
+
+## Limitations
+
+- **No Persistence:** All data is lost when the server stops.
+- **Single-threaded Command Processing:** Only deletion of sorted sets is multi-threaded.
+- **No Authentication or Security:** Intended for educational/demo purposes.
+
+---
+
+## Project Structure
+
+- `server` / `Server.cpp` — Main server binary and logic
+- `client` / `client.cpp` — Command-line client
+- `hashtable.*`, `zset.*`, `AVL.*`, `DList.*`, `heap.*` — Core data structures
+- `thread.*` — Thread pool implementation
+- `serialisation.*` — Binary protocol serialization
+- `test/` — Test code
+
+---
+
+## License
+
+MIT License (or specify your own)
+
+---
+
+## Credits
+
+Inspired by Redis and its data structures.
